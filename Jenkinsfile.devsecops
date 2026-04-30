@@ -1,0 +1,72 @@
+pipeline {
+  agent any
+
+  environment {
+    DOCKER_IMAGE = "ayush277/app:v1"
+    DB_SECRET_NAME = "db-secret"
+  }
+
+  stages {
+    stage('Code Security Scan') {
+      steps {
+        // Requires SonarQube + sonar-scanner installed on the Jenkins node
+        sh 'sonar-scanner'
+      }
+    }
+
+    stage('Dependency Scan') {
+      steps {
+        // Requires OWASP Dependency-Check installed on the Jenkins node
+        sh 'dependency-check --scan .'
+      }
+    }
+
+    stage('Build Docker') {
+      steps {
+        sh 'docker build -t ${DOCKER_IMAGE} .'
+      }
+    }
+
+    stage('Image Scan') {
+      steps {
+        // Requires trivy installed on the Jenkins node
+        sh 'trivy image ${DOCKER_IMAGE} || true'
+      }
+    }
+
+    stage('Push Image') {
+      steps {
+        sh 'docker push ${DOCKER_IMAGE}'
+      }
+    }
+
+    stage('Deploy Blue') {
+      steps {
+        // Deploy blue first (if not already deployed)
+        sh 'kubectl apply -f blue-deployment.yaml'
+        sh 'kubectl apply -f service.yaml'
+      }
+    }
+
+    stage('Deploy Green & Switch') {
+      steps {
+        sh 'kubectl apply -f green-deployment.yaml'
+        // Switch traffic to green
+        sh "kubectl patch service app-service -p '{\"spec\":{\"selector\":{\"app\":\"myapp\",\"version\":\"green\"}}}'"
+      }
+    }
+
+    stage('Remove Blue (optional)') {
+      steps {
+        // Optional cleanup
+        sh 'kubectl delete deployment app-blue || true'
+      }
+    }
+  }
+
+  post {
+    always {
+      echo 'Pipeline finished — check console output for failures and scan reports.'
+    }
+  }
+}

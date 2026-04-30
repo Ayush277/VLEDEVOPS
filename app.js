@@ -2,7 +2,8 @@ const express = require("express");
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("Updated version");
+  const version = process.env.APP_VERSION || "UPDATED";
+  res.send(`${version} version running`);
 });
 
 app.listen(3000);
